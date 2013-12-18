@@ -18,7 +18,7 @@ module BidService
 
 		#get bid task from bid_queue
 		def getBidJob(num)
-
+			return @bidoperation.getBidJob(num)
 		end
 
 		#get pagerank result for specified keyword,specified search engine.
@@ -40,4 +40,4 @@ module BidService
 	end
 end
 
-# BidService::Bidoperation.new(1).test
+# BidService::Bidoperation.new(1).getBidJob(5)

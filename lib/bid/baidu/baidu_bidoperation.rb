@@ -10,9 +10,24 @@ module BidService
 		class BaiduBidoperation
 			include Db
 
-			def test
-				ap BidWord.take.to_json
+			def initialize
+				@productId = 1
 			end
+
+			def getBidJob(num = 5)
+				# BidQueue.order("RunTime DESC, BidStatus DESC").limit(num).each do |row|
+				# 	# ap row
+				# 	ap row.BidWordId
+				# end
+				# params = {:productId => @productId, :enabled => 1}
+				# ap params
+				return BidQueue.where("FetchGuid IS NULL").order("RunTime DESC, BidStatus DESC").limit(num)
+			end
+
+
+
 		end
 	end
 end
+
+BidService::Baidu::BaiduBidoperation.new.getBidJob(5)
