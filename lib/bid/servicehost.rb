@@ -19,7 +19,7 @@ module BidService
 				unless bidJobs.nil?
 					bidJobs.each do |job|
 						keywords = @operations.getKeywordsByKeywordGroupId(job.KeywordGroupId, job.BidMatchType)
-						if keywords.nil?
+						log.warn("Word #{job.KeywordString} ") if keywords.nil?
 					end
 				end
 				
