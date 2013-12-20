@@ -17,9 +17,15 @@ module BidService
 		# end
 
 		#get bid task from bid_queue
-		def getBidJob(num)
+		def getBidJobInfo(num)
 			return @bidoperation.getBidJob(num)
 		end
+
+		#get Keyword List by KeywordGroupId
+		def getKeywordsByKeywordGroupId(keywordGroupId)
+			return @bidoperation.getKeywordsByKeywordGroupId(keywordGroupId, bidMatchType)
+		end
+
 
 		#get pagerank result for specified keyword,specified search engine.
 		def getRanking(keyword,searchProductId)

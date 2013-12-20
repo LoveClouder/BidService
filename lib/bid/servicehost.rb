@@ -1,11 +1,13 @@
 require "./bidoperation"
+require "./log"
 # require "Date"
+
 
 module BidService
 	class Servicehost
 
 		def initialize(productId = 1)
-			@host = Bidoperation.new(productId)
+			@operations = Bidoperation.new(productId)
 		end
 
 		def onStart(pollingInterval = 10,jobNum = 1)
@@ -13,7 +15,13 @@ module BidService
 			loop do
 				# p 'bidding...'
 				#bid progress
-
+				bidJobs = @operations.getBidJobInfo(jobNum)
+				unless bidJobs.nil?
+					bidJobs.each do |job|
+						keywords = @operations.getKeywordsByKeywordGroupId(job.KeywordGroupId, job.BidMatchType)
+						if keywords.nil?
+					end
+				end
 				
 
 
