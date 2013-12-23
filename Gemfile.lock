@@ -1,0 +1,10 @@
+GEM
+  remote: http://seo:8808/
+  specs:
+    pz (0.0.1)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  pz

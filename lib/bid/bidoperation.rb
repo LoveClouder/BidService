@@ -16,19 +16,24 @@ module BidService
 		# 	@bidoperation.test
 		# end
 
-		#get bid task from bid_queue
+		# get bid task from bid_queue
 		def getBidJobInfo(num)
 			return @bidoperation.getBidJob(num)
 		end
 
-		#get Keyword List by KeywordGroupId
-		def getKeywordsByKeywordGroupId(keywordGroupId)
+		# get Keyword List by KeywordGroupId and MatchType
+		def getKeywordsByKeywordGroupId(keywordGroupId, bidMatchType)
 			return @bidoperation.getKeywordsByKeywordGroupId(keywordGroupId, bidMatchType)
 		end
 
+		# get pagerank result for specified keyword
+		def getPZRanking(keyword)
+			return @bidoperation.getPZRanking(keyword)
+		end
 
-		#get pagerank result for specified keyword,specified search engine.
-		def getRanking(keyword,searchProductId)
+		# get PositionInfo from rankingResult
+		def getPositionInfo_PZ(rankingResult)
+			return @bidoperation.getPositionInfo_PZ(rankingResult)
 		end
 
 		#increase price for specified bidword with bidWordDetail.
