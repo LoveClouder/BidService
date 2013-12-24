@@ -36,16 +36,8 @@ module BidService
 			return @bidoperation.getPositionInfo_PZ(rankingResult)
 		end
 
-		#increase price for specified bidword with bidWordDetail.
-		def priceIncrease(bidWordDetail)
-		end
-
-		#decrease price for specified bidword with bidWordDetail.
-		def priceDecrease(bidWordDetail)
-		end
-
-		#check bidding result(Model:RankingResult)
-		def checkBiddingResult(currentRanking, targetRanking)
+		def bid(bidJob, keywordDetail, currentPositionInfo, specialStrategy = nil)
+			return @bidoperation.bid(bidJob, keywordDetail, currentPositionInfo, specialStrategy)
 		end
 
 	end

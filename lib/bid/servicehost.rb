@@ -10,7 +10,7 @@ module BidService
 			@operations = Bidoperation.new(productId)
 		end
 
-		def onStart(pollingInterval = 10,jobNum = 1)
+		def onStart(pollingInterval = 6,jobNum = 1)
 			$Logger.debug("0. BidService start...")
 			loop do
 				$Logger.debug("1. Entering bidding loop...")
@@ -32,17 +32,20 @@ module BidService
 							rankingKeyword = keywords.select{|i| i.match_type == 2}[0]
 						end
 						rankingResult = @operations.getPZRanking(rankingKeyword)
-						# ap rankingResult
+						ap rankingResult
 						if rankingResult.empty?
 							$Logger.error("Word #{job.KeywordString} rankingresult is nil. This may be caused by network error, timeout or other errors.")
 							raise "Word #{job.KeywordString} rankingresult is nil. This may be caused by network error, timeout or other errors."
 						end
 						# get position info
 						currentPosition = @operations.getPositionInfo_PZ(rankingResult)
-						# ap currentPosition
+						ap currentPosition
+						# ap currentPosition.class
 
-						# get bidword strategy
+						# get bidword strategy TODO
 
+						#bid core logistics
+						bidResult = @operations.bid(job, keywords, currentPosition)
 
 					end
 				end

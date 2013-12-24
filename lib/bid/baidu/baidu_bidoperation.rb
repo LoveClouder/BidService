@@ -1,5 +1,6 @@
 require "awesome_print"
 require "db"
+require "baidu"
 # require "json"
 require "pz"
 
@@ -101,6 +102,7 @@ module BidService
 			def getPositionInfo_PZ(rankingResult)
 				unless rankingResult.empty?
 					rr = rankingResult["result"][0]
+					# ap rr
 					# topAds
 					if rr["topAds"].count > 0
 						rr["topAds"].each do |ad|
@@ -144,6 +146,78 @@ module BidService
 					:rankingPosition => -1 	# none position
 				}
 			end # end of getPositionInfo_PZ
+
+			def bid(bidJob, keywordDetail, currentPositionInfo, specialStrategy)
+				# initialize bid strategy
+				if specialStrategy.nil?
+					strategy = {
+						:targetSide => bidJob.DefaultTargetSide,
+						:targetPosition => bidJob.DefaultTargetPosition,
+						:timespan => bidJob.DefaultTimeSpan
+					}
+				else
+					strategy = {
+						:targetSide => specialStrategy.targetSide,
+						:targetPosition => specialStrategy.targetPosition,
+						:timespan => specialStrategy.TimeSpan
+					}
+				end
+
+				bidResult = checkBiddingResult(currentPositionInfo, strategy)
+				ap bidResult
+				ap bidJob.BidStatus
+
+				if bidResult <= 0
+					# get target, then try to decrease price
+					priceDecrease(bidJob, keywordDetail, bidResult)
+				elsif bidResult > 0 && (bidJob.BidStatus == 0 || bidJob.BidStatus == 1)
+					# ap 'priceIncrease'
+					priceIncrease(bidJob, keywordDetail, bidResult)
+				elsif bidResult > 0 && bidJob.BidStatus == 2
+					priceRecover(bidJob, keywordDetail)
+				end
+
+
+
+			end
+
+			# increase price for specified bidword with bidWordDetail.
+			def priceIncrease(jobInfo, bidWordDetail, bidResult)
+				currentPrice = jobInfo.CurrentPrice
+				limitCPC = jobInfo.LimitCPC
+				# use different algorithms according to bidResult
+				if bidResult == 1
+					newPrice = (limitCPC - currentPrice) / 3 + currentPrice
+				elsif bidResult > 1
+					newPrice = (limitCPC - currentPrice) / 2 + currentPrice
+				end
+				newPrice = limitCPC if newPrice > limitCPC
+				ap format("%.2f",newPrice).to_f
+				
+			end
+
+			# decrease price for specified bidword with bidWordDetail.
+			def priceDecrease(jobInfo, bidWordDetail, bidResult)
+				currentPrice = jobInfo.CurrentPrice
+				minCPC = jobInfo.MinCPC
+				newPrice = (currentPrice + minCPC) / 2
+				ap format("%.2f",newPrice).to_f
+			end
+
+			# Recover price to previous price
+			def priceRecover(jobInfo, bidWordDetail)
+			end
+
+			# check bidding result(<=0 get | >0 unreached | <-9 none ranking)
+			def checkBiddingResult(currentPositionInfo, bidStrategy)
+				if currentPositionInfo[:rankingSide] > 0 && currentPositionInfo[:rankingPosition] > 0
+					currentPositionIndex = (currentPositionInfo[:rankingSide] - 1)*8 + currentPositionInfo[:rankingPosition]
+					targetPositionIndex = (bidStrategy[:targetSide] - 1)*8 + bidStrategy[:targetPosition]
+					return currentPositionIndex - targetPositionIndex
+				else
+					return 10 # ranking result is none
+				end
+			end
 
 		end
 	end
