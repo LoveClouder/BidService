@@ -8,7 +8,7 @@ module BidService
 			#initialize instance according to searchProductId.
 			case searchProductId
 			when 1
-				@bidoperation = Baidu::BaiduBidoperation.new
+				@bidoperation = BaiduPC::BaiduBidoperation.new
 			end
 		end
 
@@ -38,6 +38,10 @@ module BidService
 
 		def bid(bidJob, keywordDetail, currentPositionInfo, specialStrategy = nil)
 			return @bidoperation.bid(bidJob, keywordDetail, currentPositionInfo, specialStrategy)
+		end
+
+		def saveNewJob(job)
+			return @bidoperation.saveNewJob(job)
 		end
 
 	end

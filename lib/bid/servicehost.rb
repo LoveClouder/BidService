@@ -18,35 +18,40 @@ module BidService
 				bidJobs = @operations.getBidJobInfo(jobNum)
 				unless bidJobs.nil?
 					bidJobs.each do |job|
-						# get keywords by natural word
-						keywords = @operations.getKeywordsByKeywordGroupId(job.KeywordGroupId, job.BidMatchType)
-						if keywords.nil?
-							$Logger.error("Word #{job.KeywordString} has no keywords.")
-							raise "Word #{job.KeywordString} has no keywords."	# EXIT 1
-						end
-						# get ranking with pz api
-						if keywords.select{|i| i.match_type == 1}.count >= 1
-							# ap keywords.select{|i| i.match_type == 1}
-							rankingKeyword = keywords.select{|i| i.match_type == 1}[0]
-						else
-							rankingKeyword = keywords.select{|i| i.match_type == 2}[0]
-						end
-						rankingResult = @operations.getPZRanking(rankingKeyword)
-						ap rankingResult
-						if rankingResult.empty?
-							$Logger.error("Word #{job.KeywordString} rankingresult is nil. This may be caused by network error, timeout or other errors.")
-							raise "Word #{job.KeywordString} rankingresult is nil. This may be caused by network error, timeout or other errors."
-						end
-						# get position info
-						currentPosition = @operations.getPositionInfo_PZ(rankingResult)
-						ap currentPosition
-						# ap currentPosition.class
+						begin
+							# get keywords by natural word
+							keywords = @operations.getKeywordsByKeywordGroupId(job.KeywordGroupId, job.BidMatchType)
+							if keywords.nil?
+								raise "Word #{job.WordString} has no keywords."	# EXIT 1
+							end
+							# get ranking with pz api
+							if keywords.select{|i| i.match_type == 1}.count >= 1
+								# ap keywords.select{|i| i.match_type == 1}
+								rankingKeyword = keywords.select{|i| i.match_type == 1}[0]
+							else
+								rankingKeyword = keywords.select{|i| i.match_type == 2}[0]
+							end
+							rankingResult = @operations.getPZRanking(rankingKeyword)
+							ap rankingResult
+							if rankingResult.empty?
+								raise "Word #{job.WordString} rankingresult is nil. This may be caused by network error, timeout or other errors."
+							end
+							# get position info
+							currentPosition = @operations.getPositionInfo_PZ(rankingResult)
+							ap currentPosition
 
-						# get bidword strategy TODO
+							# get bidword strategy TODO
 
-						#bid core logistics
-						bidResult = @operations.bid(job, keywords, currentPosition)
+							# bid core logistics
+							bidResult = @operations.bid(job, keywords, currentPosition)
 
+							# save newJobInfo
+
+
+						rescue Exception => e
+							$Logger.error(e.message)
+							next
+						end
 					end
 				end
 				
