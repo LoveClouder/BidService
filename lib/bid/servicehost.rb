@@ -40,22 +40,33 @@ module BidService
 							currentPosition = @operations.getPositionInfo_PZ(rankingResult)
 							ap currentPosition
 
-							# get bidword strategy TODO
+							# get bidword strategy
+							bidStrategy = @operations.getBidWordStrategy(job)
 
 							# bid core logistics
-							bidResult = @operations.bid(job, keywords, currentPosition)
+							bidResultInfo = @operations.bid(job, keywords, currentPosition, bidStrategy)
 
-							# save newJobInfo
-
+							# generate nextJobInfo
+							@operations.saveNewJob(bidResultInfo)
 
 						rescue Exception => e
 							$Logger.error(e.message)
+							bidResultInfo = {
+								:RunTime => DateTime.now.advance(:minutes => 1),
+								:BidWordId => job.BidWordId,
+								:BidStatus => job.BidStatus,
+								:JobInfo => {
+									:rankingSide => job.CurrentSide,
+									:rankingPosition => job.CurrentPosition,
+									:priceExact => job.CurrentPrice,
+									:pricePhrase => format("%.2f", job.CurrentPrice/3).to_f,
+									:bidTime => DateTime.now
+								}
+							@operations.saveNewJob(bidResultInfo)
 							next
 						end
 					end
 				end
-				
-
 
 				$Logger.debug("Exit bidding loop...waiting next bidding.")
 				# 如果一次获取多个任务，可以取消轮询等待时间(改时间主要是为了让出价对排名的影响生效)

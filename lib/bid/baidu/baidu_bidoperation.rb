@@ -148,6 +148,20 @@ module BidService
 				}
 			end # end of getPositionInfo_PZ
 
+			def getBidWordSpecialStrategy(job)
+				bidStrategy = Db::VBidStrategy.where("BidWordId = ?", job.BidWordId).take
+				unless bidStrategy.nil?
+					defaultTargetSide = bidStrategy.DefaultTargetSide
+					defaultTargetPosition = bidStrategy.DefaultTargetPosition
+					defaultTimeSpan = bidStrategy.DefaultTimeSpan
+					unless bidStrategy.TempPositionAdjustByBidWord.nil?		# to be verify
+
+					end
+				end
+				return nil
+			end
+
+			# bid core logic
 			def bid(bidJob, keywordDetail, currentPositionInfo, specialStrategy)
 				# initialize bid strategy
 				if specialStrategy.nil?
@@ -169,13 +183,25 @@ module BidService
 				# ap bidJob.BidStatus
 
 				if bidResult <= 0
-					# get target, then try to decrease price
-					priceNew = priceDecrease(bidJob, keywordDetail, bidResult)
-					bidJob.BidStatus = 2
+					# get target and previous status is try decrease price and CurrentPrice equals MinCPC
+					# then finished bid progress
+					if bidJob.BidStatus == 2 && bidJob.CurrentPrice == bidJob.MinCPC
+						bidJob.BidStatus = 0
+						priceNew = bidJob.MinCPC
+					else
+						# get target, then try to decrease price
+						priceNew = priceDecrease(bidJob, keywordDetail, bidResult)
+						bidJob.BidStatus = 2
+					end
 				elsif bidResult > 0 && (bidJob.BidStatus == 0 || bidJob.BidStatus == 1)
-					# ap 'priceIncrease'
-					priceNew = priceIncrease(bidJob, keywordDetail, bidResult)
-					bidJob.BidStatus = 1
+					if bidJob.BidStatus == 1 && bidJob.CurrentPrice == bidJob.LimitCPC
+						priceNew = getMinPriceAtCurrentPosition(bidJob, currentPositionInfo)
+						bidJob.BidStatus = 0
+					else
+						# ap 'priceIncrease'
+						priceNew = priceIncrease(bidJob, keywordDetail, bidResult)
+						bidJob.BidStatus = 1
+					end
 				elsif bidResult > 0 && bidJob.BidStatus == 2
 					priceNew = priceRecover(bidJob, keywordDetail)
 					bidJob.BidStatus = 0
@@ -210,19 +236,19 @@ module BidService
 				bidword.Updated = DateTime.now
 				bidword.save
 
-				newBidJob = {
+				bidResultInfo = {
 					:RunTime => DateTime.now.advance(:minutes => strategy[:timespan]),
 					:BidWordId => bidJob.BidWordId,
 					:BidStatus => bidJob.BidStatus,
 					:JobInfo => {
 						:rankingSide => currentPositionInfo[:rankingSide],
 						:rankingPosition => currentPositionInfo[:rankingPosition],
-						:priceExact => priceNew[:priceExact],
-						:pricePhrase => priceNew[:pricePhrase],
+						:priceExact => bidJob.CurrentPrice,
+						:pricePhrase => format("%.2f", bidJob.CurrentPrice/3).to_f,
 						:bidTime => DateTime.now
 					}
 				}
-				return newBidJob
+				return bidResultInfo
 			end
 
 			# increase price for specified bidword with bidWordDetail.
@@ -231,11 +257,14 @@ module BidService
 				limitCPC = jobInfo.LimitCPC
 				# use different algorithms according to bidResult
 				if bidResult == 1
-					priceExact = (limitCPC - currentPrice) / 3 + currentPrice
+					priceExact = format("%.2f", ((limitCPC - currentPrice) / 3 + currentPrice)).to_f
 				elsif bidResult > 1
-					priceExact = (limitCPC - currentPrice) / 2 + currentPrice
+					priceExact = format("%.2f", ((limitCPC - currentPrice) / 2 + currentPrice)).to_f
 				end
-				priceExact = limitCPC if priceExact > limitCPC
+				# min adjust range is 1
+				priceExact = jobInfo.CurrentPrice + 1 if priceExact - jobInfo.CurrentPrice < 1
+
+				priceExact = format("%.2f", limitCPC).to_f if priceExact > limitCPC
 				pricePhrase = format("%.2f",priceExact/3).to_f
 				return {:priceExact => priceExact, :pricePhrase => pricePhrase}
 			end
@@ -244,16 +273,44 @@ module BidService
 			def priceDecrease(jobInfo, bidWordDetail, bidResult)
 				currentPrice = jobInfo.CurrentPrice
 				minCPC = jobInfo.MinCPC
-				priceExact = currentPrice - (currentPrice - minCPC) / 3
-				priceExact = minCPC if priceExact < minCPC
+				priceExact = format("%.2f", (currentPrice - (currentPrice - minCPC) / 3)).to_f
+				# min adjust range is 0.5
+				priceExact = jobInfo.CurrentPrice - 0.5 if jobInfo.CurrentPrice - priceExact < 0.5
+
+				priceExact = format("%.2f", minCPC).to_f if priceExact < minCPC
 				pricePhrase = format("%.2f",priceExact/3).to_f
-				pricePhrase = minCPC if pricePhrase < minCPC
+				pricePhrase = format("%.2f", minCPC).to_f if pricePhrase < minCPC
 				return {:priceExact => priceExact, :pricePhrase => pricePhrase}
 			end
 
-			# Recover price to previous price TODO
+			# Recover price to previous price
 			def priceRecover(jobInfo, bidWordDetail)
+				lastedVaildRow = Db::BidQueuesHistory.where("BidWordId = ? and BidStatus <> ?", jobInfo.BidWordId, 2).order("BidQueueId DESC").first
+				hashJobInfo = JSON[lastedVaildRow.JobInfo]
+				priceExact = hashJobInfo["priceExact"]
+				pricePhrase = hashJobInfo["pricePhrase"]
+				return {:priceExact => priceExact, :pricePhrase => pricePhrase}
 			end
+
+			# get cheapest price for current position
+			def getMinPriceAtCurrentPosition(jobInfo, currentPositionInfo)
+				priceExact = jobInfo.CurrentPrice
+				pricePhrase = format("%.2f",priceExact/3).to_f
+				startPoint = Db::BidQueuesHistory.where("BidWordId = ? and BidStatus = ?", jobInfo.BidWordId, 0).order("BidQueueId DESC").first
+				ap startPoint
+				Db::BidQueuesHistory.where("BidWordId = ? and BidStatus = ? and BidQueueId >= ?", jobInfo.BidWordId, 1, startPoint.BidQueueId)
+					.order("BidQueueId ASC").each do |hisJob|
+						hashJobInfo = JSON[hisJob.JobInfo]
+						# ap hashJobInfo
+						if hashJobInfo["rankingSide"] == currentPositionInfo[:rankingSide] && hashJobInfo["rankingPosition"] == currentPositionInfo[:rankingPosition]
+							priceExact = hashJobInfo["priceExact"]
+							pricePhrase = hashJobInfo["pricePhrase"]
+							break
+						end
+				end
+				return {:priceExact => priceExact, :pricePhrase => pricePhrase}
+			end
+
 
 			# check bidding result(<=0 get | >0 unreached | <-9 none ranking)
 			def checkBiddingResult(currentPositionInfo, bidStrategy)
@@ -264,6 +321,30 @@ module BidService
 				else
 					return 10 # ranking result is none
 				end
+			end
+
+			# save newJob and oldJob
+			def saveNewJob(bidResultInfo)
+				# save old job to BidQueueHis
+				oldJob = Db::BidQueue.where("BidWordId = ?", bidResultInfo[:BidWordId]).take
+				jobHis = Db::BidQueuesHistory.new
+				unless oldJob.nil?
+					jobHis.BidQueueId = oldJob.BidQueueId
+				 	jobHis.RunTime = oldJob.RunTime
+				 	jobHis.BidWordId = oldJob.BidWordId
+				 	jobHis.BidStatus = oldJob.BidStatus
+				 	jobHis.JobInfo = bidResultInfo[:JobInfo].to_json
+				 	jobHis.Updated = oldJob.Updated
+				 	jobHis.save
+				 	oldJob.destroy
+				end
+				# save newJob to BidQueue
+				newJob = Db::BidQueue.new
+				newJob.RunTime = bidResultInfo[:RunTime]
+				newJob.BidWordId = bidResultInfo[:BidWordId]
+				newJob.BidStatus = bidResultInfo[:BidStatus]
+				newJob.JobInfo = ""
+				newJob.save
 			end
 
 		end

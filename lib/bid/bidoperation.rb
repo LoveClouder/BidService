@@ -36,12 +36,16 @@ module BidService
 			return @bidoperation.getPositionInfo_PZ(rankingResult)
 		end
 
+		def getBidWordSpecialStrategy(job)
+			return @bidoperation.getBidWordSpecialStrategy(job)
+		end
+
 		def bid(bidJob, keywordDetail, currentPositionInfo, specialStrategy = nil)
 			return @bidoperation.bid(bidJob, keywordDetail, currentPositionInfo, specialStrategy)
 		end
 
-		def saveNewJob(job)
-			return @bidoperation.saveNewJob(job)
+		def saveNewJob(bidResultInfo)
+			return @bidoperation.saveNewJob(bidResultInfo)
 		end
 
 	end
