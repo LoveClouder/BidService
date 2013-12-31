@@ -41,10 +41,10 @@ module BidService
 							ap currentPosition
 
 							# get bidword strategy
-							bidStrategy = @operations.getBidWordStrategy(job)
+							bidSpecialStrategy = @operations.getBidWordSpecialStrategy(job)
 
 							# bid core logistics
-							bidResultInfo = @operations.bid(job, keywords, currentPosition, bidStrategy)
+							bidResultInfo = @operations.bid(job, keywords, currentPosition, bidSpecialStrategy)
 
 							# generate nextJobInfo
 							@operations.saveNewJob(bidResultInfo)
@@ -62,6 +62,7 @@ module BidService
 									:pricePhrase => format("%.2f", job.CurrentPrice/3).to_f,
 									:bidTime => DateTime.now
 								}
+							}
 							@operations.saveNewJob(bidResultInfo)
 							next
 						end

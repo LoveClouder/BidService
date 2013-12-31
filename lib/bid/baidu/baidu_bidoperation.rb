@@ -148,33 +148,105 @@ module BidService
 				}
 			end # end of getPositionInfo_PZ
 
+			def getAdjustedSideAndPosition(side, position, adjustValue)
+				newPosition = position + adjustValue
+				if newPosition > 8
+					if side == 1
+						newSide = 2
+						newPosition = newPosition - 8
+					elsif side == 2
+						newSide = 2
+						newPosition = 8
+					end
+				elsif newPosition <= 8 && newPosition >= 1
+					newSide = side
+					newPosition = newPosition
+				elsif newPosition < 1
+					if side == 1
+						newSide = 1
+						newPosition = 1
+					elsif side == 2
+						newSide = 1
+						newPosition = newPosition + 8
+					end	
+				end
+				return {:newSide => newSide, :newPosition => newPosition}
+			end
+
 			def getBidWordSpecialStrategy(job)
 				bidStrategy = Db::VBidStrategy.where("BidWordId = ?", job.BidWordId).take
-				unless bidStrategy.nil?
-					defaultTargetSide = bidStrategy.DefaultTargetSide
-					defaultTargetPosition = bidStrategy.DefaultTargetPosition
-					defaultTimeSpan = bidStrategy.DefaultTimeSpan
-					unless bidStrategy.TempPositionAdjustByBidWord.nil?		# to be verify
-
-					end
+				targetSide = bidStrategy.DefaultTargetSide
+				targetPosition = bidStrategy.DefaultTargetPosition
+				adjustedLimitCPC = job.LimitCPC
+				timeSpan = bidStrategy.DefaultTimeSpan
+				# 1. temp strategy by bidword
+				unless (bidStrategy.TempPositionAdjustByBidWord).nil?
+					adjustedPositionInfo = getAdjustedSideAndPosition(targetSide, targetPosition, bidStrategy.TempPositionAdjustByBidWord)
+					targetSide = adjustedPositionInfo[:newSide]
+					targetPosition = adjustedPositionInfo[:newPosition]
+					timeSpan = bidStrategy.TempTimeSpanByBidWord
+					adjustedLimitCPC = adjustedLimitCPC*(1 + bidStrategy.TempLimitCPCAdjustByBidWord)
+					return {:targetSide => targetSide, :targetPosition => targetPosition, :timeSpan => timeSpan, :adjustedLimitCPC => adjustedLimitCPC}
 				end
-				return nil
+				# 2. temp strategy by bidwordgroup
+				unless (bidStrategy.TempPositionAdjustByBidWordGroup).nil?
+					adjustedPositionInfo = getAdjustedSideAndPosition(targetSide, targetPosition, bidStrategy.TempPositionAdjustByBidWordGroup)
+					targetSide = adjustedPositionInfo[:newSide]
+					targetPosition = adjustedPositionInfo[:newPosition]
+					timeSpan = bidStrategy.TempTimeSpanByBidWordGroup
+					adjustedLimitCPC = adjustedLimitCPC*(1 + bidStrategy.TempLimitCPCAdjustByBidWordGroup)
+					return {:targetSide => targetSide, :targetPosition => targetPosition, :timeSpan => timeSpan, :adjustedLimitCPC => adjustedLimitCPC}
+				end
+				# 3. special strategy
+				unless (bidStrategy.SpecialPositionAdjust).nil?
+					adjustedPositionInfo = getAdjustedSideAndPosition(targetSide, targetPosition, bidStrategy.SpecialPositionAdjust)
+					targetSide = adjustedPositionInfo[:newSide]
+					targetPosition = adjustedPositionInfo[:newPosition]
+					timeSpan = bidStrategy.SpecialTimeSpan
+					adjustedLimitCPC = adjustedLimitCPC*(1 + bidStrategy.SpecialLimitCPCAdjust)
+					return {:targetSide => targetSide, :targetPosition => targetPosition, :timeSpan => timeSpan, :adjustedLimitCPC => adjustedLimitCPC}
+				end
+				# 4. General strategy
+				unless (bidStrategy.GeneralPositionAdjustByWeek).nil? || (bidStrategy.GeneralPositionAdjustByHour).nil?
+					if (bidStrategy.GeneralPositionAdjustByHour).nil?
+						adjustedPositionInfo = getAdjustedSideAndPosition(targetSide, targetPosition, bidStrategy.GeneralPositionAdjustByWeek)
+						adjustedLimitCPC = adjustedLimitCPC*(1 + bidStrategy.GeneralLimitCPCAdjustByWeek)
+					elsif (bidStrategy.GeneralPositionAdjustByWeek).nil?
+						adjustedPositionInfo = getAdjustedSideAndPosition(targetSide, targetPosition, bidStrategy.GeneralPositionAdjustByHour)
+						adjustedLimitCPC = adjustedLimitCPC*(1 + bidStrategy.GeneralLimitCPCAdjustByHour)
+					else
+						generalPositionAdjust = bidStrategy.GeneralPositionAdjustByWeek + bidStrategy.GeneralPositionAdjustByHour
+						generalPositionAdjust = 1 if generalPositionAdjust > 0
+						generalPositionAdjust = -1 if generalPositionAdjust < 0
+						generalLimitCPCAdjust = (bidStrategy.GeneralLimitCPCAdjustByWeek + bidStrategy.GeneralLimitCPCAdjustByHour)/2
+
+						adjustedPositionInfo = getAdjustedSideAndPosition(targetSide, targetPosition, generalPositionAdjust)
+						adjustedLimitCPC = adjustedLimitCPC*(1 + generalLimitCPCAdjust)
+					end
+					targetSide = adjustedPositionInfo[:newSide]
+					targetPosition = adjustedPositionInfo[:newPosition]
+					return {:targetSide => targetSide, :targetPosition => targetPosition, :timeSpan => timeSpan, :adjustedLimitCPC => adjustedLimitCPC}
+				end
+				# special strategy is none
+				return {}
 			end
 
 			# bid core logic
 			def bid(bidJob, keywordDetail, currentPositionInfo, specialStrategy)
 				# initialize bid strategy
-				if specialStrategy.nil?
+				if specialStrategy.empty?
 					strategy = {
 						:targetSide => bidJob.DefaultTargetSide,
 						:targetPosition => bidJob.DefaultTargetPosition,
-						:timespan => bidJob.DefaultTimeSpan
+						:timespan => bidJob.DefaultTimeSpan,
+						:limitCPC => bidJob.LimitCPC
 					}
 				else
 					strategy = {
-						:targetSide => specialStrategy.targetSide,
-						:targetPosition => specialStrategy.targetPosition,
-						:timespan => specialStrategy.TimeSpan
+						:targetSide => specialStrategy[:targetSide],
+						:targetPosition => specialStrategy[:targetPosition],
+						:timespan => specialStrategy[:timeSpan],
+						:limitCPC => specialStrategy[:adjustedLimitCPC]
 					}
 				end
 
@@ -194,12 +266,13 @@ module BidService
 						bidJob.BidStatus = 2
 					end
 				elsif bidResult > 0 && (bidJob.BidStatus == 0 || bidJob.BidStatus == 1)
-					if bidJob.BidStatus == 1 && bidJob.CurrentPrice == bidJob.LimitCPC
+					if bidJob.BidStatus == 1 && bidJob.CurrentPrice == strategy[:limitCPC]
+						# dont get target, but has reached the limit cpc, so get cheapest price for current position
 						priceNew = getMinPriceAtCurrentPosition(bidJob, currentPositionInfo)
 						bidJob.BidStatus = 0
 					else
 						# ap 'priceIncrease'
-						priceNew = priceIncrease(bidJob, keywordDetail, bidResult)
+						priceNew = priceIncrease(bidJob, keywordDetail, bidResult, strategy)
 						bidJob.BidStatus = 1
 					end
 				elsif bidResult > 0 && bidJob.BidStatus == 2
@@ -252,9 +325,9 @@ module BidService
 			end
 
 			# increase price for specified bidword with bidWordDetail.
-			def priceIncrease(jobInfo, bidWordDetail, bidResult)
+			def priceIncrease(jobInfo, bidWordDetail, bidResult, strategy)
 				currentPrice = jobInfo.CurrentPrice
-				limitCPC = jobInfo.LimitCPC
+				limitCPC = strategy[:limitCPC]
 				# use different algorithms according to bidResult
 				if bidResult == 1
 					priceExact = format("%.2f", ((limitCPC - currentPrice) / 3 + currentPrice)).to_f
@@ -298,7 +371,7 @@ module BidService
 				pricePhrase = format("%.2f",priceExact/3).to_f
 				startPoint = Db::BidQueuesHistory.where("BidWordId = ? and BidStatus = ?", jobInfo.BidWordId, 0).order("BidQueueId DESC").first
 				ap startPoint
-				Db::BidQueuesHistory.where("BidWordId = ? and BidStatus = ? and BidQueueId >= ?", jobInfo.BidWordId, 1, startPoint.BidQueueId)
+				Db::BidQueuesHistory.where("BidWordId = ? and BidQueueId >= ?", jobInfo.BidWordId, startPoint.BidQueueId)
 					.order("BidQueueId ASC").each do |hisJob|
 						hashJobInfo = JSON[hisJob.JobInfo]
 						# ap hashJobInfo
